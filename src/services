@@ -1,0 +1,200 @@
+import { GoogleGenAI, Type } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "" });
+
+const SYSTEM_PROMPT = `HormoneHealth & Nutrition AI Expert
+1. Persona y Rol
+Eres "HormoneHealth Coach", un asistente experto en nutrición clínica y salud hormonal femenina. Tu especialidad es integrar la Dieta Mediterránea con el manejo del hipotiroidismo, la tiroiditis de Hashimoto y la menopausia. Tu objetivo es proporcionar consejos prácticos, menús dinámicos y apoyo emocional basado estrictamente en las fuentes proporcionadas.
+
+2. Base de Conocimiento Integrada
+- Método del Plato Saludable: 50% verduras, 25% proteínas magras y 25% granos integrales.
+- Nutrición Tiroidea: Priorizar Selenio (nueces de Brasil, 1-3 al día), Zinc (carnes magras, mariscos), Yodo (jurel, lácteos, huevos) y Omega-3 (pescado azul).
+- Gestión de Menopausia: Enfoque en calcio (sésamo, sardinas, legumbres), Vitamina D y K2 para salud ósea; control de grasa abdominal y riesgo cardiovascular.
+- Seguridad de Medicación: Advertir siempre tomar la levotiroxina en ayunas (30-60 min antes del desayuno) y esperar 4 horas para tomar suplementos de calcio, hierro o magnesio.
+- Cocina Práctica: Ofrecer recetas de una sola sartén/bandeja para reducir el estrés (ej. salmón con verduras, pollo al limón con fideos de calabacín).
+
+3. Dinámica de Módulos
+- Módulo de Voz: Cuando detectes que la interacción es por voz, utiliza frases cortas y claras. Funcionalidad: "Modo Manos Libres en Cocina". Si el usuario pide una receta, léela paso a paso, pausando después de cada instrucción.
+- Módulo de Vídeo: Actúa como un consultor en vivo. Análisis Visual: Si el usuario muestra un alimento o etiqueta a la cámara, analiza los ingredientes priorizando el orden (el primero es el más abundante) y detectando ultraprocesados.
+- Módulo de Accesibilidad: Describe verbalmente las tablas nutricionales.
+
+4. Estructura de Respuesta y Estilo
+- Directo y Citado: Salta preámbulos innecesarios. Cita siempre la información con el formato "[i]".
+- Adaptativo: Combina recomendaciones según el perfil del usuario.
+- Preventivo: Indica cocinar alimentos bociógenos.
+
+5. Restricciones Críticas
+- No diagnosticar: Recomienda siempre consultar a un profesional médico.
+- No sustituir tratamiento: La dieta es un apoyo, no sustituye la levotiroxina o la terapia hormonal.
+- Interacciones: Recordar siempre el espacio de 4 horas entre medicación tiroidea y suplementos.`;
+
+export async function chatWithCoach(message: string, history: { role: 'user' | 'model', parts: { text: string }[] }[] = []) {
+  try {
+    const chat = ai.chats.create({
+      model: "gemini-3-flash-preview",
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+      },
+      history: history,
+    });
+
+    const result = await chat.sendMessage({ message: message });
+    return result.text;
+  } catch (error) {
+    console.error("Error in chatWithCoach:", error);
+    throw error;
+  }
+}
+
+export async function analyzeImage(base64Image: string, prompt: string = "Analiza los ingredientes de este alimento. Prioriza el orden (el primero es el más abundante) y detecta ultraprocesados.") {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: {
+        parts: [
+          { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
+          { text: prompt }
+        ]
+      },
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+      }
+    });
+    return response.text;
+  } catch (error) {
+    console.error("Error in analyzeImage:", error);
+    throw error;
+  }
+}
+
+export async function generateMealPlan() {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: "Genera un plan de alimentación semanal (7 días) basado en la Dieta Mediterránea, optimizado para hipotiroidismo y menopausia. Incluye desayuno, almuerzo, merienda y cena para cada día.",
+      config: {
+        systemInstruction: SYSTEM_PROMPT + "\n\nIMPORTANTE: Devuelve la respuesta estrictamente en formato JSON siguiendo el esquema proporcionado.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            week: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  day: { type: Type.STRING },
+                  meals: {
+                    type: Type.OBJECT,
+                    properties: {
+                      breakfast: {
+                        type: Type.OBJECT,
+                        properties: {
+                          title: { type: Type.STRING },
+                          description: { type: Type.STRING },
+                          tips: { type: Type.STRING, description: "Consejos específicos para tiroides/menopausia" },
+                          ingredients: { type: Type.ARRAY, items: { type: Type.STRING } },
+                          instructions: { type: Type.ARRAY, items: { type: Type.STRING } }
+                        },
+                        required: ["title", "description", "tips", "ingredients", "instructions"]
+                      },
+                      lunch: {
+                        type: Type.OBJECT,
+                        properties: {
+                          title: { type: Type.STRING },
+                          description: { type: Type.STRING },
+                          tips: { type: Type.STRING },
+                          ingredients: { type: Type.ARRAY, items: { type: Type.STRING } },
+                          instructions: { type: Type.ARRAY, items: { type: Type.STRING } }
+                        },
+                        required: ["title", "description", "tips", "ingredients", "instructions"]
+                      },
+                      snack: {
+                        type: Type.OBJECT,
+                        properties: {
+                          title: { type: Type.STRING },
+                          description: { type: Type.STRING },
+                          tips: { type: Type.STRING },
+                          ingredients: { type: Type.ARRAY, items: { type: Type.STRING } },
+                          instructions: { type: Type.ARRAY, items: { type: Type.STRING } }
+                        },
+                        required: ["title", "description", "tips", "ingredients", "instructions"]
+                      },
+                      dinner: {
+                        type: Type.OBJECT,
+                        properties: {
+                          title: { type: Type.STRING },
+                          description: { type: Type.STRING },
+                          tips: { type: Type.STRING },
+                          ingredients: { type: Type.ARRAY, items: { type: Type.STRING } },
+                          instructions: { type: Type.ARRAY, items: { type: Type.STRING } }
+                        },
+                        required: ["title", "description", "tips", "ingredients", "instructions"]
+                      }
+                    },
+                    required: ["breakfast", "lunch", "snack", "dinner"]
+                  }
+                },
+                required: ["day", "meals"]
+              }
+            }
+          },
+          required: ["week"]
+        }
+      }
+    });
+    
+    return JSON.parse(response.text);
+  } catch (error) {
+    console.error("Error in generateMealPlan:", error);
+    throw error;
+  }
+}
+
+export async function generateShoppingList(mealPlan: any) {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Basado en este plan de comidas semanal, genera una lista de la compra consolidada y organizada por categorías (ej. Verduras, Proteínas, Despensa, Lácteos). Asegúrate de que las cantidades sean realistas para una persona durante una semana.
+
+Plan de comidas:
+${JSON.stringify(mealPlan)}`,
+      config: {
+        systemInstruction: SYSTEM_PROMPT + "\n\nIMPORTANTE: Devuelve la respuesta estrictamente en formato JSON siguiendo el esquema proporcionado.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            categories: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  items: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        name: { type: Type.STRING },
+                        amount: { type: Type.STRING }
+                      },
+                      required: ["name", "amount"]
+                    }
+                  }
+                },
+                required: ["name", "items"]
+              }
+            }
+          },
+          required: ["categories"]
+        }
+      }
+    });
+    
+    return JSON.parse(response.text);
+  } catch (error) {
+    console.error("Error in generateShoppingList:", error);
+    throw error;
+  }
+}
